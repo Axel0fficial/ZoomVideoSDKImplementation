@@ -1,1 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ADPT Integration</title>
+</head>
+<body>
+    <!--Standard encodeer API-->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jsrsasign/10.6.1/jsrsasign-all-min.js" 
+    integrity="sha512-2uE4/Fo0nVyJiuKxkvfOjA6SJod6YRPP2rA9DkSoBVv4aOPeQEmlrv0B+nsmfXNns6RPyYvzQbg2UNDUvpqEsw==" 
+    crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script src="https://source.zoom.us/videosdk/zoom-video-1.6.0.min.js"></script>
+    
+    <script>
+        const ZoomVideo = window.WebVideoSDK.default
+        const client = ZoomVideo.createClient()
+        client.init('en-US', 'CDN')
+        let stream
+        
+        //Signature, to be split to server side
+        let sdkKey =  '';
+        let sdkSecret = '';
+        let topic = '';
+        let password = '';
+        let name = '';
+        let sessionKey = '';
+        let userIdentity = "";
 
+        function generateSessionToken(sdkKey, sdkSecret, topic, password , sessionKey , userIdentity , role = 1,) {
+            let signature = '';
+                const iat = Math.round(new Date().getTime() / 1000);
+                const exp = iat + 60 * 60 * 2;
+
+                const oHeader = {alg: 'HS256', typ: 'JWT'};
+                const oPayload = {
+                    sdkKey: sdkKey,
+                    iat: iat,
+                    exp: exp,
+                    topic: topic,
+                    password: password,
+                    userIdentity: userIdentity,
+                    sessionKey: sessionKey,
+                    role: role,
+                };
+
+                function generateSessionToken(sdkKey, sdkSecret, topic, password , sessionKey , userIdentity , role = 1,) {
+                const iat = Math.round(new Date().getTime() / 1000);
+                const exp = iat + 60 * 60 * 2;
+
+                const oHeader = {alg: 'HS256', typ: 'JWT'};
+                const oPayload = {
+                    app_key: sdkKey,
+                    iat: iat,
+                    exp: exp,
+                    version: 1,
+                    tpc: topic,
+                    user_identity: userIdentity,
+                    session_key: sessionKey,
+                    role_type: role,
+                };
+
+                const sHeader = JSON.stringify(oHeader);
+                const sPayload = JSON.stringify(oPayload);
+                const signature = KJUR.jws.JWS.sign('HS256', sHeader, sPayload, sdkSecret);
+                
+                return signature;
+            }
+        
+        const sessionToken = generateSessionToken(sdkKey, sdkSecret, topic, password, sessionKey);
+        console.log(sessionToken);
+
+        client.join(topic, sessionToken, name, password).then(() => {
+            stream = client.getMediaStream()
+            console.log("Success")
+        }).catch((error) => {
+            console.log(error)
+        })
+    </script>
+</body>
+</html>
