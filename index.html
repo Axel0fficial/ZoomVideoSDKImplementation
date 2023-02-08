@@ -1,0 +1,965 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>Zoom WebSDK</title>
+    <meta charset="utf-8" />
+    <meta name="format-detection" content="telephone=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+    <meta http-equiv="origin-trial" 
+        content="ApbyCprSSGVaT3D3B6PtIv+n/9OBJNNvn90FOjL7bJcSHnPiF3EWtIu0cucMH4cSEaJfG+5/wMev1YBGHQNkHw0AAABLeyJvcmlnaW4iOiJodHRwczovLzAuMC4wLjA6MzAwMCIsImZlYXR1cmUiOiJXZWJDb2RlY3MiLCJleHBpcnkiOjE2MjYyMjA3OTl9"
+    >
+    <link 
+        as = 'style'
+        rel="stylesheet"
+        href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css" 
+        integrity="sha512-iBBXm8fW90+nuLcSKlbmrPcLa0OT92xO1BIsZ+ywDWZCvqsWgccV3gFoRBv0z+8dLJgyAHIhR35VZc2oM/gI1w==" 
+        crossorigin="anonymous" 
+    /><!--cross origin might be turned into use-credentials-->
+</head>
+<body>
+  <script src="https://source.zoom.us/videosdk/zoom-video-1.6.0.min.js" as="script"></script>
+  <script src="https://kjur.github.io/jsrsasign/jsrsasign-all-min.js"></script>
+  <style>/* Globally set text font to a sans-serif font */
+    * {
+        font-family: Arial, Helvetica, sans-serif;
+        font-weight: 250;
+        letter-spacing: 1px;
+      }
+      /* Centers all app content in middle of page */
+      html,
+      body {
+        height: 100vh;
+        display: flex;
+        align-content: center;
+        justify-content: center;
+        overflow: hidden;
+      }
+      
+      /* Generic container class to conveniently center all contents */
+      .container {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      
+      /* Styles for the video canvas to slightly improve aesthetics */
+      .video-canvas {
+        background: rgba(0, 0, 0, 1);
+        margin: 1px;
+        border-radius: 14px;
+        border: 1px solid rgba(0, 0, 0, 1);
+      }
+      
+      /* Helper class to conveniently toggle hide/unhide */
+      .hidden {
+        display: none;
+      }
+      
+      
+      /* Preview page styles */
+      
+      .preview__root {
+        flex-direction: column;
+        height: fit-content;
+      }
+      
+      .preview-video {
+        width: 800px;
+        height: 450px;
+        background: rgba(0, 0, 0, 1);
+        margin: 1px;
+        border-radius: 14px;
+        border: 1px solid rgba(0, 0, 0, 1);
+      }
+      
+      .join-button {
+        color: rgba(255, 255, 255, 1);
+        background: rgba(0, 141, 250, 1);
+        border-radius: 14px;
+        font-size: 16px;
+        height: 3em;
+        width: 24em;
+        margin: 2em auto;
+        cursor: pointer;
+        border: none;
+        font-stretch: expanded;
+        transition: filter 0.15s ease-out;
+      }
+      
+      .join-button:hover {
+        filter: brightness(110%);
+      }
+      
+      /* The "active" pseudo-class MUST come after "hover" */
+      .join-button:active {
+        filter: brightness(80%);
+      }
+      
+      
+      /* Loading styles */
+      
+      .loading-view {
+        flex-direction: column;
+        animation: blink 5s linear infinite;
+      }
+      
+      .loading-spinner {
+        font-size: 32px;
+        color: rgba(0, 141, 250, 1);
+        animation: spin 2s cubic-bezier(0.68, -0.55, 0.265, 1.55) infinite;
+      }
+      
+      @keyframes spin {
+        0% {
+          transform:rotate(0deg);
+        }
+        100% {
+          transform:rotate(360deg);
+        }
+      }
+      @keyframes blink {
+        0% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.6;
+        }
+      }
+      
+      
+      /* Video app styles */
+      
+      /* Container for the video-app that helps place the meeting controls at the bottom */
+      .video-app {
+        flex-direction: column;
+        height: fit-content;
+        justify-content: flex-end;
+        position: relative;
+      }
+      
+      
+      /* Additional styling for the meeting control buttons' container */
+      .meeting-control-layer {
+        /* `position: absolute;` places the controls above the canvas */
+        position: absolute;
+        border-radius: 14px;
+        background-color: rgba(125, 125, 125, 0.18);
+        margin-block-end: 5px;
+      }
+      
+      /* Styles for the buttons */
+      .meeting-control-button {
+        border-radius: 50%;
+        border: none;
+        font-size: 24px;
+        color: rgba(0, 0, 0, 1);
+        background-color: rgba(255, 255, 255, 1);
+        height: 2em;
+        width: 2em;
+        margin: 0.5em;
+        cursor: pointer;
+        transition: all 0.15s ease-out;
+      }
+      
+      .meeting-control-button__off {
+        color: white;
+        background-color: red;
+      }
+      
+      .meeting-control-button__leave-session {
+        color: red;
+        /* background-color: red; */
+        transform: rotate(-135deg);
+      }
+      
+      .meeting-control-button:hover {
+        filter: brightness(90%);
+      }
+      
+      /* The "active" pseudo-class MUST come after "hover" */
+      .meeting-control-button:active {
+        filter: brightness(80%);
+      }
+      
+      .vertical-divider {
+        border: 1px solid rgba(0, 0, 0, 1);
+        margin: 10px 5px;
+        align-self: stretch;
+      }
+      
+      /* 
+       * Classes to help show mic volume feedback for different intensities
+       * Add more styles to create smoother transitions */
+      .mic-feedback__very-low {
+        background: linear-gradient(0deg, #00FFFF 20%, #FFFFFF 20%);
+        -webkit-background-clip: text;
+        background-clip: text;
+        -webkit-text-fill-color: transparent;
+      }
+      .mic-feedback__low {
+        background: linear-gradient(0deg, #00FFFF 35%, #FFFFFF 35%);
+        -webkit-background-clip: text;
+        background-clip: text;
+        -webkit-text-fill-color: transparent;
+      }
+      .mic-feedback__medium {
+        background: linear-gradient(0deg, #00FFFF 50%, #FFFFFF 50%);
+        -webkit-background-clip: text;
+        background-clip: text;
+        -webkit-text-fill-color: transparent;
+      }
+      .mic-feedback__high {
+        background: linear-gradient(0deg, #00FFFF 65%, #FFFFFF 65%);
+        -webkit-background-clip: text;
+        background-clip: text;
+        -webkit-text-fill-color: transparent;
+      }
+      .mic-feedback__very-high {
+        background: linear-gradient(0deg, #00FFFF 80%, #FFFFFF 80%);
+        -webkit-background-clip: text;
+        background-clip: text;
+        -webkit-text-fill-color: transparent;
+      }
+      .mic-feedback__max {
+        background: #00FFFF;
+        -webkit-background-clip: text;
+        background-clip: text;
+        -webkit-text-fill-color: transparent;
+      }
+      
+      .self-video {
+        display:none;
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+      }
+      
+      .self-video-canvas {
+        display: none;
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+      }</style>
+    <div class="container app-root">
+        <!-- Preview view -->
+        <div id="js-preview-view" class="container preview__root">
+            <span>
+                <h1>Join Video Session</h1>
+            </span>
+            <div class="container video-app">
+                <!-- You can use any height or width you wish for the preview -->
+                <video id="js-preview-video" class="preview-video" playsinline="" muted="" data-video="0"></video>
+                <div class="container meeting-control-layer">
+                    <!-- "fas" and "fa" are icon prefixes for the font-awesome library -->
+                    <button id="js-preview-mic-button" class="meeting-control-button">
+                        <i id="js-preview-mic-icon" class="fas fa-microphone-slash"></i>
+                    </button>
+                    <button id="js-preview-webcam-button" class="meeting-control-button">
+                        <i id="js-preview-webcam-icon" class="fas fa-video webcam__off"></i>
+                    </button>
+                </div>
+            </div>
+            <button id="js-preview-join-button" class="join-button">
+                Join
+            </button>
+        </div>
+        <!-- Loading view -->
+        <div id="js-loading-view" class="container loading-view hidden">
+            <h1>Joining session, sit tight...</h1>
+            <i class="fas fa-spinner loading-spinner"></i>
+        </div>
+        <!-- In-session view -->
+        <div id="js-video-view" class="container video-app hidden">
+            <canvas id="video-canvas" class="video-canvas" width="1280" height="640"></canvas>
+            <video id="self-video" class="self-video"></video>
+            <canvas id="self-video-canvas" class="self-video-canvas" width="640" height="360"></canvas>
+            <div class="container meeting-control-layer">
+                <!-- "fas" and "fa" are icon prefixes for the font-awesome library -->
+                <button id="js-mic-button" class="meeting-control-button">
+                    <i id="js-mic-icon" class="fas fa-microphone-slash"></i>
+                </button>
+                <button id="js-webcam-button" class="meeting-control-button">
+                    <i id="js-webcam-icon" class="fas fa-video webcam__off"></i>
+                </button>
+                <div class="vertical-divider"></div>
+                <button id="js-leave-button" 
+                    class="meeting-control-button meeting-control-button__leave-session">
+                    <i id="js-leave-session-icon" class="fas fa-phone"></i>
+                </button>
+            </div>
+        </div>
+        <!-- Ending view -->
+        <div id="js-end-view" class="container ending-view hidden">
+            <h1>You have successfully left the session!</h1>
+        </div>
+    </div>
+    <script>
+const ZoomVideo = window.WebVideoSDK.default
+const client = ZoomVideo.createClient()
+//resource url was preloaded but not used within firsst few seconds make sure it has an appropiated 'as' value and it is preloaded intentionally
+//A preload for 'https://source.zoom.us/videosdk/1.6.0/lib/js_media.min.js' is found, but is not used because the request credentials mode does not match. Consider taking a look at crossorigin attribute.
+//ScriptProcessorNode is deprecated, use AudioWorklet instead 
+client.init('en-US', 'CDN')
+
+let stream
+/*
+perms = {
+headers: {
+  'Access-Control-Allow-Origin': "*",
+  'Cross-Origin-Resource-Policy': "cross-origin",
+  'Cross-Origin-Embedder-Policy': "credentialless",
+  'Cross-Origin-Opener-Policy': "unsafe-none"
+}
+}
+//did nothing, but this has to be the right way
+*/
+// config.js
+let sdkKey =  '';
+let sdkSecret = '';
+let topic = '';
+let password = '';
+let name = '';
+let sessionKey = '';
+let user_identity = '';
+
+//tools.js
+
+function generateSessionToken(
+    sdkKey,
+    sdkSecret,
+    topic,
+    passWord =  '',
+    sessionKey = '',
+    userIdentity ='',
+    roleType = 1,
+) {
+    let signature = '';
+    try {
+        const iat = Math.round(new Date().getTime() / 1000);
+        const exp = iat + 60 * 60 * 2;
+
+        const oHeader = {alg: 'HS256', typ: 'JWT'};
+        const oPayload = {
+            app_key: sdkKey,
+            iat,
+            exp,
+             tpc: topic,
+             pwd: passWord,
+             user_identity: userIdentity,
+             session_key: sessionKey,
+             role_type: roleType,
+        };
+
+        const sHeader = JSON.stringify(oHeader);
+        const sPayload = JSON.stringify(oPayload);
+        signature = KJUR.jws.JWS.sign('HS256', sHeader, sPayload, sdkSecret);
+    } catch (e) {
+        console.error(e);
+    }
+    return signature;
+}
+//Mangle this lines into working code
+function isSupportWebCodecs(){
+  return typeof MediaStreamTrackProcessor === 'function'
+}
+function isAndroidBrowser(){
+  return /android/i.test(navigator.userAgent);
+}
+function isSupportOffscreenCanvas(){
+  return typeof OffscreenCanvas === 'function';
+}
+
+//preview.video-props.js
+const PREVIEW_VIDEO_ELEMENT = document.getElementById('js-preview-video');
+
+const PREVIEW_VIDEO_DIMS = {
+    Width: 800,
+    Height: 450,
+};
+//video-render-props.js
+const VIDEO_CANVAS = document.getElementById('video-canvas');
+const SELF_VIDEO_ELEMENT = document.getElementById('self-video');
+const SELF_VIDEO_CANVAS = document.getElementById('self-video-canvas');
+const VIDEO_CANVAS_DIMS = {
+    Width: 1280,
+    Height: 640,
+}
+//simple-state.js
+class SimpleState {
+    constructor(){
+        this.reset();
+    }
+    reset(){
+        this.selfId = -1;
+        this.participants = [];
+        this.audioEncode = false;
+        this.audioDecode = false;
+        this.isStartedAudio = false;
+    }
+    resetParticipantId(){
+        this.participants = [];
+    }
+}
+new SimpleState();
+const state = new SimpleState
+//simple-view-switcher.js
+const Views = {
+    Preview: document.getElementById('js-preview-view'),
+    Loading: document.getElementById('js-loading-view'),
+    Session: document.getElementById('js-video-view'),
+    End: document.getElementById('js-end-view'),
+}
+const switchPreviewToLoadingView = () => {
+    Views.Preview.classList.toggle('hidden');
+    Views.Loading.classList.toggle('hidden');
+};
+const switchLoadingToSessionView = () => {
+    Views.Loading.classList.toggle('hidden');
+    Views.Preview.classList.toggle('hidden');
+};
+const switchSessionToEndingView = () => {
+    Views.Session.classList.toggle('hidden');
+    Views.End.classList.toggle('hidden');
+};
+//video-toggler.js
+let prevIsSelfVideoOn = false;
+let prevIsParticipantVideoOn = false;
+
+
+const toggleSelfVideo = async (mediaStream, isVideoOn) => {
+    const isUsingVideoElementToStartVideo =
+      typeof window.OffscreenCanvas === 'function' && !mediaStream.isSupportMultipleVideos();
+    const isRenderingSingleVideoOnCanvas =
+      typeof window.OffscreenCanvas !== 'function' && !mediaStream.isSupportMultipleVideos();
+    if (typeof isVideoOn !== 'boolean' || prevIsSelfVideoOn === isVideoOn) {
+      return;
+    }
+    const canvas = isRenderingSingleVideoOnCanvas ? SELF_VIDEO_CANVAS : VIDEO_CANVAS;
+    if (isVideoOn) {
+      if (isUsingVideoElementToStartVideo) {
+        SELF_VIDEO_ELEMENT.style.display = 'block';
+        SELF_VIDEO_ELEMENT.style.width = '50%';
+        SELF_VIDEO_ELEMENT.style.left = '50%';
+        await mediaStream.startVideo({ videoElement: SELF_VIDEO_ELEMENT });
+      } else {
+        await mediaStream.startVideo();
+        if (isRenderingSingleVideoOnCanvas) {
+          SELF_VIDEO_CANVAS.style.display = 'block';
+          SELF_VIDEO_CANVAS.style.width = '50%';
+          SELF_VIDEO_CANVAS.style.height = '50%';
+          SELF_VIDEO_CANVAS.style.left = '50%';
+          SELF_VIDEO_CANVAS.style.top = '50%';
+          SELF_VIDEO_CANVAS.style.transform = 'translateY(-50%)';
+          await mediaStream.renderVideo(
+            canvas,
+            state.selfId,
+            VIDEO_CANVAS_DIMS.Width / 2,
+            VIDEO_CANVAS_DIMS.Height / 2,
+            0,
+            0,
+            VideoQuality.Video_360P
+          );
+        } else {
+          await mediaStream.renderVideo(
+            canvas,
+            state.selfId,
+            VIDEO_CANVAS_DIMS.Width / 2,
+            VIDEO_CANVAS_DIMS.Height,
+            VIDEO_CANVAS_DIMS.Width / 2,
+            0,
+            VideoQuality.Video_360P
+          );
+        }
+      }
+    } else {
+      await mediaStream.stopVideo();
+      if (!isUsingVideoElementToStartVideo) {
+        if (isRenderingSingleVideoOnCanvas) {
+          SELF_VIDEO_CANVAS.style.display = 'none';
+        }
+        await mediaStream.stopRenderVideo(canvas, state.selfId);
+      } else {
+        SELF_VIDEO_ELEMENT.style.display = 'none';
+      }
+    }
+    prevIsSelfVideoOn = isVideoOn;
+  };
+  
+   const toggleParticipantVideo = async (mediaStream, userId, isVideoOn) => {
+    if (typeof isVideoOn !== 'boolean' || prevIsParticipantVideoOn === isVideoOn) {
+      return;
+    }
+  
+    if (isVideoOn) {
+      await mediaStream.renderVideo(
+        VIDEO_CANVAS,
+        userId,
+        VIDEO_CANVAS_DIMS.Width / 2,
+        VIDEO_CANVAS_DIMS.Height,
+        0,
+        0,
+        VideoQuality.Video_360P
+      );
+    } else {
+      await mediaStream.stopRenderVideo(VIDEO_CANVAS, userId);
+    }
+    prevIsParticipantVideoOn = isVideoOn;
+  };
+//button-click-handler.js
+/**
+ * Initializes the mic and webcam toggle buttons
+ *
+ * @param {VideoClient} zoomClient
+ * @param {Stream} mediaStream
+ */
+const initButtonClickHandlers = async (zoomClient, mediaStream) => {
+    const initMicClick = () => {
+      const micButton = document.getElementById('js-mic-button');
+      const micIcon = document.getElementById('js-mic-icon');
+  
+      let isMuted = true;
+      let isButtonAlreadyClicked = false;
+      if (!state.isStartedAudio) {
+        micIcon.classList.remove('fa-microphone-slash');
+        micIcon.classList.add('fa-headset');
+      }
+  
+      const toggleMicButtonStyle = () => {
+        micIcon.classList.toggle('fa-microphone');
+        micIcon.classList.toggle('fa-microphone-slash');
+        micButton.classList.toggle('meeting-control-button__off');
+      };
+  
+      const toggleMuteUnmute = () => (isMuted ? mediaStream.muteAudio() : mediaStream.unmuteAudio());
+  
+      const isMutedSanityCheck = () => {
+        const mediaStreamIsMuted = mediaStream.isAudioMuted();
+        console.log('Sanity check: is muted? ', mediaStreamIsMuted);
+        console.log('Does this match button state? ', mediaStreamIsMuted === isMuted);
+      };
+  
+      const onClick = async (event) => {
+        event.preventDefault();
+        if (!isButtonAlreadyClicked) {
+          isButtonAlreadyClicked = true;
+          if (state.isStartedAudio) {
+            try {
+              isMuted = !isMuted;
+              await toggleMuteUnmute();
+              toggleMicButtonStyle();
+              isMutedSanityCheck();
+            } catch (e) {
+              console.error('Error toggling mute', e);
+            }
+  
+            isButtonAlreadyClicked = false;
+          } else {
+            try {
+              if (state.audioDecode && state.audioEncode) {
+                await mediaStream.startAudio();
+                micIcon.classList.remove('fa-headset');
+                if (mediaStream.isAudioMuted()) {
+                  micIcon.classList.add('fa-microphone-slash');
+                  isMuted = true;
+                } else {
+                  micIcon.classList.add('fa-microphone');
+                  isMuted = false;
+                }
+                state.isStartedAudio = true;
+                isButtonAlreadyClicked = false;
+              } else {
+                console.warn('Please wait until media workers are ready');
+              }
+            } catch (e) {
+              console.error('Error start audio', e);
+            }
+          }
+        } else {
+          console.log('=== WARNING: already toggling mic ===');
+        }
+      };
+  
+      micButton.addEventListener('click', onClick);
+    };
+    const initWebcamClick = () => {
+      const webcamButton = document.getElementById('js-webcam-button');
+  
+      let isWebcamOn = false;
+      let isButtonAlreadyClicked = false;
+  
+      const toggleWebcamButtonStyle = () => webcamButton.classList.toggle('meeting-control-button__off');
+  
+      const onClick = async (event) => {
+        event.preventDefault();
+        if (!isButtonAlreadyClicked) {
+          isButtonAlreadyClicked = true;
+  
+          try {
+            isWebcamOn = !isWebcamOn;
+            await toggleSelfVideo(mediaStream, isWebcamOn);
+            toggleWebcamButtonStyle();
+          } catch (e) {
+            isWebcamOn = !isWebcamOn;
+            console.error('Error toggling video', e);
+          }
+  
+          isButtonAlreadyClicked = false;
+        } else {
+          console.log('=== WARNING: already toggling webcam ===');
+        }
+      };
+  
+      webcamButton.addEventListener('click', onClick);
+    };
+  
+    const initLeaveSessionClick = () => {
+      const leaveButton = document.getElementById('js-leave-button');
+  
+      const onClick = async (event) => {
+        event.preventDefault();
+        try {
+          await Promise.all([toggleSelfVideo(mediaStream, false), toggleParticipantVideo(mediaStream, false)]);
+          await zoomClient.leave();
+          switchSessionToEndingView();
+        } catch (e) {
+          console.error('Error leaving session', e);
+        }
+      };
+  
+      leaveButton.addEventListener('click', onClick);
+    };
+  
+    initMicClick();
+    initWebcamClick();
+    initLeaveSessionClick();
+  };
+//client-event-listener.js
+
+const PARTICIPANT_CHANGE_TYPE = {
+  ADD: 'add',
+  REMOVE: 'remove',
+  UPDATE: 'update'
+};
+
+const PEER_VIDEO_STATE_CHANGE_ACTION_TYPE = {
+  Start: 'Start',
+  Stop: 'Stop'
+};
+
+const onUserAddedListener = (zoomClient) => {
+  zoomClient.on('user-added', (payload) => {
+    console.log(`User added`, payload);
+
+    state.participants = zoomClient.getAllUser();
+  });
+};
+
+const onUserRemovedListener = (zoomClient) => {
+  zoomClient.on('user-removed', (payload) => {
+    console.log(`User removed`, payload);
+
+    state.participants = zoomClient.getAllUser();
+  });
+};
+
+const onUserUpdatedListener = (zoomClient) => {
+  zoomClient.on('user-updated', (payload) => {
+    console.log(`User updated`, payload);
+
+    state.participants = zoomClient.getAllUser();
+  });
+};
+
+const onPeerVideoStateChangedListener = (zoomClient, mediaStream) => {
+  zoomClient.on('peer-video-state-change', async (payload) => {
+    console.log('onPeerVideoStateChange', payload);
+    const { action, userId } = payload;
+
+    if (state.participants.findIndex((user) => user.userId === userId) === -1) {
+      console.log('Detected unrecognized participant ID. Ignoring: ', userId);
+      return;
+    }
+
+    if (action === PEER_VIDEO_STATE_CHANGE_ACTION_TYPE.Start) {
+      toggleParticipantVideo(mediaStream, userId, true);
+    } else if (action === PEER_VIDEO_STATE_CHANGE_ACTION_TYPE.Stop) {
+      toggleParticipantVideo(mediaStream, userId, false);
+    }
+  });
+};
+
+const onMediaWorkerReadyListener = (zoomClient) => {
+  zoomClient.on('media-sdk-change', (payload) => {
+    const { action, type, result } = payload;
+    if (type === 'audio' && result === 'success') {
+      if (action === 'encode') {
+        state.audioEncode = true;
+      } else if (action === 'decode') {
+        state.audioDecode = true;
+      }
+    }
+  });
+};
+
+const initClientEventListeners = (zoomClient, mediaStream) => {
+  onUserAddedListener(zoomClient);
+  onUserRemovedListener(zoomClient, mediaStream);
+  onUserUpdatedListener(zoomClient);
+  onPeerVideoStateChangedListener(zoomClient, mediaStream);
+  onMediaWorkerReadyListener(zoomClient);
+  setTimeout(() => {
+    const peerParticipants = state.participants.filter((user) => user.userId !== state.selfId);
+    if (peerParticipants.length > 0 && peerParticipants[0].bVideoOn === true) {
+      toggleParticipantVideo(mediaStream, peerParticipants[0].userId, true);
+    }
+  }, 3000);
+};
+//session-joiner.js
+
+const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+const joinSession = async (zmClient) => {
+  const zmClientInitParams = {
+    language: 'en-US'
+  };
+  const sessionToken = generateSessionToken(
+    sdkKey,
+    sdkSecret,
+    topic,
+    password,
+    sessionKey
+  );
+
+    let mediaStream;
+
+  const initAndJoinSession = async () => {
+    await zmClient.init(zmClientInitParams.language, zmClientInitParams.dependentAssets);
+
+    try {
+      await zmClient.join(topic, sessionToken, name, password);
+      mediaStream = zmClient.getMediaStream();
+      state.selfId = zmClient.getSessionInfo().userId;
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const startAudioMuted = async () => {
+    await mediaStream.startAudio();
+    state.isStartedAudio = true;
+    if (!mediaStream.isAudioMuted()) {
+      mediaStream.muteAudio();
+    }
+  };
+
+    const join = async () => {
+        console.log('======= Initializing video session =======');
+        await initAndJoinSession();
+        console.log('======= Initializing client event handlers =======');
+        initClientEventListeners(zmClient, mediaStream);
+        console.log('======= Starting audio muted =======');
+      /*  if (!isSafari) {
+              await startAudioMuted();
+            }  */
+//So with this out of the way, it doesnt trigger the 2nd pop up but we enter the session unmuted, das bad and it stills throw us back at the preview
+        console.log('======= Initializing button click handlers =======');
+        await initButtonClickHandlers(zmClient, mediaStream);
+        console.log('======= Session joined =======');
+    };
+
+    await join ();
+    return zmClient;
+};
+
+//preview.js
+const initPreviewButtons = () => {
+    ZoomVideo.preloadDependentAssets();
+    const zmClient = ZoomVideo.createClient();
+    const audioTrack = ZoomVideo.createLocalAudioTrack();
+    const videoTrack = ZoomVideo.createLocalVideoTrack();
+    let isPreviewAudioConnected = false;
+    let isWebcamOn = false;
+    const initPreviewAudioButtonClick = () => {
+        const VOLUME_ANIMATION_INTERVAL_MS = 100;
+        let volumeAnimation = null;
+        let prevVolumeAnimationStyle = '';
+
+        const micButton = document.getElementById('js-preview-mic-button');
+        const micIcon = document.getElementById('js-preview-mic-icon');
+        
+        let isMuted = true;
+
+        let isButtonAlreadyClicked = false;
+
+        const toggleMicButtonStyle = () => {
+            micIcon.classList.toggle('fa-microphone');
+            micIcon.classList.toggle('fa-microphone-slash');
+            micButton.classList.toggle('meeting-control-button__off');
+            
+            if (prevVolumeAnimationStyle) {
+                micIcon.classList.toggle(prevVolumeAnimationStyle);
+                prevVolumeAnimationStyle = '';
+            }
+        };
+
+        const animateMicVolume = () => {
+            const newVolume = audioTrack.getCurrentVolume();
+            let newVolumeAnimationStyle = '';
+
+            if (newVolume === 0) {
+                newVolumeAnimationStyle = '';
+            } else if (newVolume <= 0.1) {
+                newVolumeAnimationStyle = 'mic-feedback__very-low';
+            } else if (newVolume <= 0.2) {
+                newVolumeAnimationStyle = 'mic-feedback__low';
+            } else if (newVolume <= 0.3) {
+                newVolumeAnimationStyle = 'mic-feedback__medium';
+            } else if (newVolume <= 0.4) {
+                newVolumeAnimationStyle = 'mic-feedback__high';
+            } else if (newVolume <= 0.5) {
+                newVolumeAnimationStyle = 'mic-feedback__very-high';
+            } else {
+                newVolumeAnimationStyle = 'mic-feedback__max';
+            }
+
+            if (prevVolumeAnimationStyle !== '') {
+                micIcon.classList.toggle(prevVolumeAnimationStyle);
+            }
+
+            if (newVolumeAnimationStyle !== '') {
+                micIcon.classList.toggle(newVolumeAnimationStyle);
+            }
+            prevVolumeAnimationStyle = newVolumeAnimationStyle;
+        };
+
+        const startVolumeAnimation = () => { 
+            if (!volumeAnimation) {
+                volumeAnimation = setInterval(animateMicVolume, VOLUME_ANIMATION_INTERVAL_MS);
+            }
+        };
+
+        const endVolumeAnimation = () => {
+            if (volumeAnimation) {
+                clearInterval(volumeAnimation);
+                volumeAnimation = null;
+            }
+        };
+
+        const toggleMuteUnmute = () => {
+            if (isMuted) {
+                audioTrack.mute();
+                endVolumeAnimation();
+            } else {
+                audioTrack.unmute();
+                startVolumeAnimation();
+            }
+        };
+
+        const onClick = async (event) => {
+            event.preventDefault();
+            if (!isButtonAlreadyClicked) {
+                isButtonAlreadyClicked = true;
+                
+                try {
+                    if (!isPreviewAudioConnected) {
+                        await audioTrack.start();
+                        isPreviewAudioConnected = true;
+                    }
+                    isMuted = !isMuted;
+                    await toggleMuteUnmute();
+                    toggleMicButtonStyle();
+                } catch (e) {
+                    console.error('Error toggling mute', e);
+                }
+
+                isButtonAlreadyClicked = false;
+            } else {
+                console.log('=== WARNING: already toggling mic ===');
+            }
+        };
+
+        micButton.addEventListener("click", onClick);
+    };
+
+    const initVideoPreviewButtonClick = () => {
+        const webcamButton = document.getElementById('js-preview-webcam-button');
+
+        let isButtonAlreadyClicked = false;
+
+        const toggleWebcamButtonStyle = () => webcamButton.classList.toggle('meeting-control-button__off');
+        const togglePreviewVideo = async () => isWebcamOn ? videoTrack.start(PREVIEW_VIDEO_ELEMENT) : videoTrack.stop();
+
+        const onClick = async (event) => {
+            event.preventDefault();
+            if (!isButtonAlreadyClicked) {
+                isButtonAlreadyClicked = true;
+
+                try {
+                    isWebcamOn = !isWebcamOn;
+                    await togglePreviewVideo();
+                    toggleWebcamButtonStyle();
+                } catch (e) {
+                    isWebcamOn = !isWebcamOn;
+                    console.error('Error toggling video preview', e);
+                }
+
+                isButtonAlreadyClicked = false;
+            } else {
+                console.log('=== WARNING: already toggling webcam ===');
+            }
+        };
+
+        webcamButton.addEventListener("click", onClick);
+    };
+
+    const initJoinButtonClick = () => {
+        const joinButton = document.getElementById('js-preview-join-button');
+        let isButtonAlreadyClicked = false;
+
+        const onClick = async (event) => {
+            event.preventDefault();
+            if (!isButtonAlreadyClicked) {
+                isButtonAlreadyClicked = true;
+                try {
+                    if (isPreviewAudioConnected) {
+                      audioTrack.stop();
+                      isPreviewAudioConnected = false;
+          }
+          if (isWebcamOn) {
+            videoTrack.stop();
+                    }
+                    switchPreviewToLoadingView();
+                    await joinSession(zmClient);
+                    switchLoadingToSessionView();
+                } catch (e) {
+                    console.error('Error joining session', e);
+                }
+
+                isButtonAlreadyClicked = false;
+            } else {
+                console.log('=== WARNING: already toggling webcam ===');
+            }
+        };
+
+        joinButton.addEventListener("click", onClick);
+    };
+
+    initPreviewAudioButtonClick();
+    initVideoPreviewButtonClick();
+    initJoinButtonClick();
+};
+
+//index.js
+
+window.addEventListener('DOMContentLoaded', async () => {
+  console.log('======= Initializing preview =======');
+  await initPreviewButtons();
+  console.log('======= Done initializing preview =======');
+});
+    </script>
+</body>
+</html>
+<!---->
